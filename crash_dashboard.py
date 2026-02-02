@@ -15,7 +15,11 @@ def load_data():
     main = pd.read_parquet('dashboard_data_main.parquet')
     return all_crashes, fatal_serious, main
 
-all_crashes_ts, fatal_serious_ts, main_data = load_data()
+try:
+    all_crashes_ts, fatal_serious_ts, main_data = load_data()
+except Exception as e:
+    st.error(f"Error loading data: {e}")
+    st.stop()
 
 # Title
 st.title("Massachusetts Crash Data Analysis (2003-2024)")

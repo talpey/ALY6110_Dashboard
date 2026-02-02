@@ -177,100 +177,123 @@ st.plotly_chart(fig, use_container_width=True)
 
 st.markdown("---")
 
-# # ========== VISUAL 2: GEOGRAPHIC BREAKDOWN ==========
-# st.header("Geographic Distribution")
+# ========== VISUAL 2: GEOGRAPHIC BREAKDOWN ==========
+st.header("Geographic Distribution")
 
-# # Calculate Fatal/Serious rate by city using ALL severities (not filtered by severity)
-# # Use total_all_data which has all filters EXCEPT severity
-# geo_all = total_all_data.groupby('CITY_TOWN_NAME')['crash_count'].sum().reset_index()
-# geo_all.columns = ['CITY_TOWN_NAME', 'total_crashes']
+# Calculate Fatal/Serious rate by city - optimized version
+with st.spinner("Calculating geographic patterns..."):
+    # Work with total_all_data (all severities)
+    geo_data = total_all_data[['CITY_TOWN_NAME', 'SEVERITY_GROUP', 'crash_count']].copy()
+    
+    # Group once and pivot
+    geo_summary = geo_data.groupby(['CITY_TOWN_NAME', 'SEVERITY_GROUP'])['crash_count'].sum().unstack(fill_value=0)
+    
+    # Calculate totals and rates
+    if 'Fatal' in geo_summary.columns and 'Serious' in geo_summary.columns:
+        geo_summary['fatal_serious_crashes'] = geo_summary['Fatal'] + geo_summary['Serious']
+    elif 'Fatal' in geo_summary.columns:
+        geo_summary['fatal_serious_crashes'] = geo_summary['Fatal']
+    elif 'Serious' in geo_summary.columns:
+        geo_summary['fatal_serious_crashes'] = geo_summary['Serious']
+    else:
+        geo_summary['fatal_serious_crashes'] = 0
+    
+    geo_summary['total_crashes'] = geo_summary.sum(axis=1)
+    geo_summary['fatal_serious_rate'] = (geo_summary['fatal_serious_crashes'] / geo_summary['total_crashes'] * 100)
+    
+    # Filter and get top 20
+    geo_final = geo_summary[geo_summary['total_crashes'] >= 100].nlargest(20, 'fatal_serious_rate')
+    geo_final = geo_final.reset_index()
+    
+    fig_geo = px.bar(
+        geo_final,
+        x='fatal_serious_rate',
+        y='CITY_TOWN_NAME',
+        orientation='h',
+        title='Fatal/Serious Crash Rate by City (Top 20, min 100 crashes)',
+        labels={'fatal_serious_rate': 'Fatal/Serious Rate (%)', 'CITY_TOWN_NAME': 'City/Town'},
+        hover_data={'total_crashes': True, 'fatal_serious_crashes': True}
+    )
+    fig_geo.update_layout(height=600, yaxis={'categoryorder': 'total ascending'})
+    st.plotly_chart(fig_geo, use_container_width=True)
 
-# geo_fatal_serious = total_all_data[total_all_data['SEVERITY_GROUP'].isin(['Fatal', 'Serious'])]
-# geo_fs = geo_fatal_serious.groupby('CITY_TOWN_NAME')['crash_count'].sum().reset_index()
-# geo_fs.columns = ['CITY_TOWN_NAME', 'fatal_serious_crashes']
+st.markdown("---")
 
-# geo_merged = geo_all.merge(geo_fs, on='CITY_TOWN_NAME', how='left').fillna(0)
-# geo_merged['fatal_serious_rate'] = (geo_merged['fatal_serious_crashes'] / geo_merged['total_crashes'] * 100)
+# ========== VISUAL 3: CONTRIBUTING FACTORS ==========
+st.header("Risk Factors Analysis")
 
-# # Filter to cities with at least 100 crashes and get top 20 by rate
-# geo_merged = geo_merged[geo_merged['total_crashes'] >= 100]
-# geo_merged = geo_merged.sort_values('fatal_serious_rate', ascending=False).head(20)
+# Create a baseline dataset with ONLY year filter (no other filters)
+# This ensures risk rates are always calculated against all conditions
+baseline_data = main_data[
+    (main_data['YEAR'] >= year_range[0]) & 
+    (main_data['YEAR'] <= year_range[1])
+]
 
-# fig_geo = px.bar(
-#     geo_merged,
-#     x='fatal_serious_rate',
-#     y='CITY_TOWN_NAME',
-#     orientation='h',
-#     title='Fatal/Serious Crash Rate by City (Top 20, min 100 crashes)',
-#     labels={'fatal_serious_rate': 'Fatal/Serious Rate (%)', 'CITY_TOWN_NAME': 'City/Town'},
-#     hover_data={'total_crashes': True, 'fatal_serious_crashes': True}
-# )
-# fig_geo.update_layout(height=600, yaxis={'categoryorder': 'total ascending'})
-# st.plotly_chart(fig_geo, use_container_width=True)
+# Road surface - optimized
+with st.spinner("Analyzing road surface risk factors..."):
+    road_data = baseline_data[['ROAD_SURF_COND_DESCR', 'SEVERITY_GROUP', 'crash_count']].copy()
+    road_summary = road_data.groupby(['ROAD_SURF_COND_DESCR', 'SEVERITY_GROUP'])['crash_count'].sum().unstack(fill_value=0)
+    
+    if 'Fatal' in road_summary.columns and 'Serious' in road_summary.columns:
+        road_summary['fatal_serious_crashes'] = road_summary['Fatal'] + road_summary['Serious']
+    elif 'Fatal' in road_summary.columns:
+        road_summary['fatal_serious_crashes'] = road_summary['Fatal']
+    elif 'Serious' in road_summary.columns:
+        road_summary['fatal_serious_crashes'] = road_summary['Serious']
+    else:
+        road_summary['fatal_serious_crashes'] = 0
+    
+    road_summary['total_crashes'] = road_summary.sum(axis=1)
+    road_summary['fatal_serious_rate'] = (road_summary['fatal_serious_crashes'] / road_summary['total_crashes'] * 100)
+    
+    road_final = road_summary[road_summary['total_crashes'] >= 100].nlargest(10, 'fatal_serious_rate')
+    road_final = road_final.reset_index()
+    
+    fig_road = px.bar(
+        road_final,
+        x='fatal_serious_rate',
+        y='ROAD_SURF_COND_DESCR',
+        orientation='h',
+        title='Fatal/Serious Rate by Road Surface Condition (baseline rates, min 100 crashes)',
+        labels={'fatal_serious_rate': 'Fatal/Serious Rate (%)', 'ROAD_SURF_COND_DESCR': 'Road Surface'},
+        hover_data={'total_crashes': True, 'fatal_serious_crashes': True}
+    )
+    fig_road.update_layout(height=500, yaxis={'categoryorder': 'total ascending'})
+    st.plotly_chart(fig_road, use_container_width=True)
 
-# st.markdown("---")
+# Light conditions - optimized
+with st.spinner("Analyzing light condition risk factors..."):
+    light_data = baseline_data[['AMBNT_LIGHT_DESCR', 'SEVERITY_GROUP', 'crash_count']].copy()
+    light_summary = light_data.groupby(['AMBNT_LIGHT_DESCR', 'SEVERITY_GROUP'])['crash_count'].sum().unstack(fill_value=0)
+    
+    if 'Fatal' in light_summary.columns and 'Serious' in light_summary.columns:
+        light_summary['fatal_serious_crashes'] = light_summary['Fatal'] + light_summary['Serious']
+    elif 'Fatal' in light_summary.columns:
+        light_summary['fatal_serious_crashes'] = light_summary['Fatal']
+    elif 'Serious' in light_summary.columns:
+        light_summary['fatal_serious_crashes'] = light_summary['Serious']
+    else:
+        light_summary['fatal_serious_crashes'] = 0
+    
+    light_summary['total_crashes'] = light_summary.sum(axis=1)
+    light_summary['fatal_serious_rate'] = (light_summary['fatal_serious_crashes'] / light_summary['total_crashes'] * 100)
+    
+    light_final = light_summary[light_summary['total_crashes'] >= 100].nlargest(10, 'fatal_serious_rate')
+    light_final = light_final.reset_index()
+    
+    fig_light = px.bar(
+        light_final,
+        x='fatal_serious_rate',
+        y='AMBNT_LIGHT_DESCR',
+        orientation='h',
+        title='Fatal/Serious Rate by Light Condition (baseline rates, min 100 crashes)',
+        labels={'fatal_serious_rate': 'Fatal/Serious Rate (%)', 'AMBNT_LIGHT_DESCR': 'Light Condition'},
+        hover_data={'total_crashes': True, 'fatal_serious_crashes': True}
+    )
+    fig_light.update_layout(height=500, yaxis={'categoryorder': 'total ascending'})
+    st.plotly_chart(fig_light, use_container_width=True)
 
-# # ========== VISUAL 3: CONTRIBUTING FACTORS ==========
-# st.header("Risk Factors Analysis")
-
-# # Create a baseline dataset with ONLY year filter (no other filters)
-# # This ensures risk rates are always calculated against all conditions
-# baseline_data = main_data[
-#     (main_data['YEAR'] >= year_range[0]) & 
-#     (main_data['YEAR'] <= year_range[1])
-# ]
-
-# # Calculate Fatal/Serious rate by road surface condition using baseline
-# road_all = baseline_data.groupby('ROAD_SURF_COND_DESCR')['crash_count'].sum().reset_index()
-# road_all.columns = ['ROAD_SURF_COND_DESCR', 'total_crashes']
-
-# road_fs = baseline_data[baseline_data['SEVERITY_GROUP'].isin(['Fatal', 'Serious'])]
-# road_fs_grouped = road_fs.groupby('ROAD_SURF_COND_DESCR')['crash_count'].sum().reset_index()
-# road_fs_grouped.columns = ['ROAD_SURF_COND_DESCR', 'fatal_serious_crashes']
-
-# road_merged = road_all.merge(road_fs_grouped, on='ROAD_SURF_COND_DESCR', how='left').fillna(0)
-# road_merged['fatal_serious_rate'] = (road_merged['fatal_serious_crashes'] / road_merged['total_crashes'] * 100)
-# road_merged = road_merged[road_merged['total_crashes'] >= 100]  # Min 100 crashes
-# road_merged = road_merged.sort_values('fatal_serious_rate', ascending=False).head(10)
-
-# fig_road = px.bar(
-#     road_merged,
-#     x='fatal_serious_rate',
-#     y='ROAD_SURF_COND_DESCR',
-#     orientation='h',
-#     title='Fatal/Serious Rate by Road Surface Condition (baseline rates, min 100 crashes)',
-#     labels={'fatal_serious_rate': 'Fatal/Serious Rate (%)', 'ROAD_SURF_COND_DESCR': 'Road Surface'},
-#     hover_data={'total_crashes': True, 'fatal_serious_crashes': True}
-# )
-# fig_road.update_layout(height=500, yaxis={'categoryorder': 'total ascending'})
-# st.plotly_chart(fig_road, use_container_width=True)
-
-# # Calculate Fatal/Serious rate by light condition using baseline
-# light_all = baseline_data.groupby('AMBNT_LIGHT_DESCR')['crash_count'].sum().reset_index()
-# light_all.columns = ['AMBNT_LIGHT_DESCR', 'total_crashes']
-
-# light_fs = baseline_data[baseline_data['SEVERITY_GROUP'].isin(['Fatal', 'Serious'])]
-# light_fs_grouped = light_fs.groupby('AMBNT_LIGHT_DESCR')['crash_count'].sum().reset_index()
-# light_fs_grouped.columns = ['AMBNT_LIGHT_DESCR', 'fatal_serious_crashes']
-
-# light_merged = light_all.merge(light_fs_grouped, on='AMBNT_LIGHT_DESCR', how='left').fillna(0)
-# light_merged['fatal_serious_rate'] = (light_merged['fatal_serious_crashes'] / light_merged['total_crashes'] * 100)
-# light_merged = light_merged[light_merged['total_crashes'] >= 100]  # Min 100 crashes
-# light_merged = light_merged.sort_values('fatal_serious_rate', ascending=False).head(10)
-
-# fig_light = px.bar(
-#     light_merged,
-#     x='fatal_serious_rate',
-#     y='AMBNT_LIGHT_DESCR',
-#     orientation='h',
-#     title='Fatal/Serious Rate by Light Condition (baseline rates, min 100 crashes)',
-#     labels={'fatal_serious_rate': 'Fatal/Serious Rate (%)', 'AMBNT_LIGHT_DESCR': 'Light Condition'},
-#     hover_data={'total_crashes': True, 'fatal_serious_crashes': True}
-# )
-# fig_light.update_layout(height=500, yaxis={'categoryorder': 'total ascending'})
-# st.plotly_chart(fig_light, use_container_width=True)
-
-# st.markdown("---")
+st.markdown("---")
 
 # ========== VISUAL 4: TEMPORAL PATTERNS - HEATMAP ==========
 st.header("Temporal Patterns")
